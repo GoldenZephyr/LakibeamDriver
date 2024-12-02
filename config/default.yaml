@@ -1,0 +1,11 @@
+frame_id: laser
+inverted: false
+hostip: 0.0.0.0
+sensorip: 192.168.198.2
+port: 2368
+angle_offset: 0
+scanfreq: 30
+filter: 3
+laser_enable: true
+scan_range_start: 45
+scan_range_stop: 315

@@ -1,6 +1,4 @@
-#include <rclcpp/rclcpp.hpp>
-#include <sensor_msgs/msg/laser_scan.hpp>
-
+#include <chrono>
 #include <pthread.h>
 #include <sched.h>
 #include <stdio.h>
@@ -8,7 +6,11 @@
 
 #include "../include/data_type.h"
 #include "../include/remote.h"
+#include "cnpy.h"
+#include "yaml-cpp/yaml.h"
 #include <arpa/inet.h>
+#include <config_utilities/config_utilities.h>
+#include <config_utilities/parsing/yaml.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -21,98 +23,50 @@
 #include <unistd.h>
 
 #define DEG2RAD(x) ((x)*M_PI / 180.f)
-using namespace std;
-class lakibeam1_scan : public rclcpp::Node {
+
+struct LidarConfig {
+  std::string frame_id;
+  std::string port;
+  std::string hostip;
+  std::string sensorip;
+  std::string scanfreq;
+  std::string filter;
+  std::string laser_enable;
+  std::string scan_range_start;
+  std::string scan_range_stop;
+  bool inverted;
+  int angle_offset;
+};
+
+void declare_config(LidarConfig &config) {
+  config::name("LidarConfig");
+
+  config::field(config.frame_id, "frame_id");
+  config::field(config.port, "port");
+  config::field(config.hostip, "hostip");
+  config::field(config.sensorip, "sensorip");
+  config::field(config.scanfreq, "scanfreq");
+  config::field(config.filter, "filter");
+  config::field(config.laser_enable, "laser_enable");
+  config::field(config.scan_range_start, "scan_range_start");
+  config::field(config.scan_range_stop, "scan_range_stop");
+  config::field(config.inverted, "inverted");
+  config::field(config.angle_offset, "angle_offset");
+}
+
+class lakibeam1_scan {
 public:
-  lakibeam1_scan() : Node("laser_scan_publisher") {
-    declare_parameters();
-    get_parameters();
-    scan_pub =
-        create_publisher<sensor_msgs::msg::LaserScan>(output_topic, 1000);
-    info();
+  lakibeam1_scan(std::string config_path) {
+    get_parameters(config_path);
     // scan_config();
     create_socket();
-    scan_publish();
   }
 
-protected:
-  void get_parameters() {
-    get_parameter<string>("frame_id", frame_id);
-    get_parameter<std::string>("port", port);
-    get_parameter<string>("hostip", hostip);
-    get_parameter<string>("sensorip", sensorip);
-    get_parameter<string>("output_topic", output_topic);
-    get_parameter<string>("scanfreq", scanfreq);
-    get_parameter<string>("filter", filter);
-    get_parameter<string>("laser_enable", laser_enable);
-    get_parameter<string>("scan_range_start", scan_range_start);
-    get_parameter<string>("scan_range_stop", scan_range_stop);
-    get_parameter<bool>("inverted", inverted);
-    get_parameter<int>("angle_offset", angle_offset);
-  };
-
-  void declare_parameters() {
-    declare_parameter<string>("frame_id", frame_id);
-    declare_parameter<string>("port", port);
-    declare_parameter<string>("hostip", hostip);
-    declare_parameter<string>("sensorip", sensorip);
-    declare_parameter<string>("output_topic", output_topic);
-    declare_parameter<string>("scanfreq", scanfreq);
-    declare_parameter<string>("filter", filter);
-    declare_parameter<string>("laser_enable", laser_enable);
-    declare_parameter<string>("scan_range_start", scan_range_start);
-    declare_parameter<string>("scan_range_stop", scan_range_stop);
-    declare_parameter<bool>("inverted", inverted);
-    declare_parameter<int>("angle_offset", angle_offset);
-  };
-  void info() {
-    RCLCPP_INFO(get_logger(), "frame_id:%s", frame_id.c_str());
-    RCLCPP_INFO(get_logger(), "output_topic:%s", output_topic.c_str());
-    RCLCPP_INFO(get_logger(), "inverted:%s", (inverted ? "True" : "False"));
-    RCLCPP_INFO(get_logger(), "hostip:%s", hostip.c_str());
-    RCLCPP_INFO(get_logger(), "sensorip:%s", sensorip.c_str());
-    RCLCPP_INFO(get_logger(), "port:%s", port.c_str());
-    RCLCPP_INFO(get_logger(), "scanfreq:%s", scanfreq.c_str());
-    RCLCPP_INFO(get_logger(), "filter:%s", filter.c_str());
-    RCLCPP_INFO(get_logger(), "laser_enable:%s", laser_enable.c_str());
-    RCLCPP_INFO(get_logger(), "scan_range_start:%s", scan_range_start.c_str());
-    RCLCPP_INFO(get_logger(), "scan_range_stop:%s", scan_range_stop.c_str());
-  };
-  void scan_config() {
-    RCLCPP_INFO(get_logger(), "scan_config");
-    sensor_config(sensorip, "/api/v1/sensor/scanfreq", scanfreq);
-    sensor_config(sensorip, "/api/v1/sensor/laser_enable", laser_enable);
-    sensor_config(sensorip, "/api/v1/sensor/scan_range/start",
-                  scan_range_start);
-    sensor_config(sensorip, "/api/v1/sensor/scan_range/stop", scan_range_stop);
-    RCLCPP_INFO(get_logger(), "scan_config1");
-  };
-  int create_socket() {
-    RCLCPP_INFO(get_logger(), "create_socket");
-    // rclcpp::sleep_for(std::chrono::milliseconds(2000));
-    // get_telemetry_data(sensorip);
-    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sockfd == -1) {
-      RCLCPP_INFO(get_logger(), "Failed to create socket");
-      return -1;
-    }
-
-    memset(&ser_addr, 0, sizeof(ser_addr));
-    ser_addr.sin_family = AF_INET;
-    ser_addr.sin_addr.s_addr = inet_addr(hostip.c_str());
-    ser_addr.sin_port = htons(atoi(port.c_str()));
-
-    if (bind(sockfd, (struct sockaddr *)&ser_addr, sizeof(ser_addr)) < 0) {
-      RCLCPP_INFO(get_logger(), "Socket bind error!");
-      return -1;
-    }
-    return 0;
-  };
   void scan_publish() {
-    RCLCPP_INFO(get_logger(), "scan_publish");
+    std::cout << "scan_publish" << std::endl;
     // rclcpp::sleep_for(std::chrono::milliseconds(2000));
     // get_telemetry_data(sensorip);
-    while (rclcpp::ok()) {
+    while (1) {
       if (scan_vec_ready == 0) {
         while (1) {
           if (j == 12) {
@@ -120,8 +74,8 @@ protected:
             recvfrom(sockfd, &MSOP_Data, sizeof(MSOP_Data), 0,
                      (struct sockaddr *)&clent_addr, &len);
             if (MSOP_Data.BlockID[0].Azimuth == 0) {
-              scan_end = scan_begin;
-              scan_begin = rclcpp::Clock().now();
+              // scan_end = scan_begin; // TODO
+              // scan_begin = rclcpp::Clock().now(); // TODO
             }
             if ((MSOP_Data.BlockID[1].Azimuth - MSOP_Data.BlockID[0].Azimuth) >
                 0) {
@@ -163,63 +117,119 @@ protected:
       }
 
       if (scan_vec_ready == 1) {
-        sensor_msgs::msg::LaserScan scan;
         uint16_t num_readings;
-        float duration = (scan_begin - scan_end).seconds();
+        // float duration = (scan_begin - scan_end).seconds();
 
         num_readings = scan_vec.size();
-        scan.header.stamp = scan_begin;
-        scan.header.frame_id = frame_id;
-        scan.angle_min = DEG2RAD(-180 + angle_offset);
-        scan.angle_max = DEG2RAD(180 + angle_offset);
-        scan.angle_increment = 2.0 * M_PI / num_readings;
-        scan.scan_time = duration;
-        scan.time_increment = duration / (float)num_readings;
-        scan.range_min = 0.0;
-        scan.range_max = 100.0;
-        scan.ranges.resize(num_readings);
-        scan.intensities.resize(num_readings);
+        std::chrono::milliseconds time_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch());
+        // auto time = std::chrono::system_clock::now();
+        //  scan.header.stamp = scan_begin;
+        //  scan.angle_min = DEG2RAD(-180 + angle_offset);
+        //  scan.angle_max = DEG2RAD(180 + angle_offset);
+        //  scan.angle_increment = 2.0 * M_PI / num_readings;
+        //  scan.scan_time = duration;
+        //  scan.time_increment = duration / (float)num_readings;
+        //  scan.range_min = 0.0;
+        //  scan.range_max = 100.0;
 
-        for (int i = 0; i < num_readings; i++) {
+        std::vector<double> scan_ranges;
+        std::vector<double> scan_intensities;
+        scan_ranges.resize(num_readings);
+        scan_intensities.resize(num_readings);
+        for (int idx = 0; i < num_readings; i++) {
           if (!inverted) {
-            scan.ranges[i] = (float)scan_vec[i].dist / 1000;
-            scan.intensities[i] = scan_vec[i].rssi;
+            scan_ranges[idx] = scan_vec[idx].dist / 1000.0;
+            scan_intensities[idx] = scan_vec[idx].rssi;
           } else {
-            scan.ranges[num_readings - i - 1] = (float)scan_vec[i].dist / 1000;
-            scan.intensities[num_readings - i - 1] = scan_vec[i].rssi;
+            scan_ranges[num_readings - idx - 1] = scan_vec[idx].dist / 1000.0;
+            scan_intensities[num_readings - idx - 1] = scan_vec[idx].rssi;
           }
         }
 
-        scan_pub->publish(scan);
-        RCLCPP_INFO(get_logger(),
-                    "New topic %s published, total data points: %d",
-                    output_topic.c_str(), num_readings);
-        scan_vec.clear();
+        YAML::Emitter out;
+        out << YAML::BeginMap;
+        out << YAML::Key << "timestamp";
+        out << YAML::Value << time_ms.count();
+        out << YAML::EndMap;
+
+        std::ofstream fout("metadata_" + std::to_string(scan_num) + ".yaml");
+        fout << out.c_str();
+
+        cnpy::npy_save("intensities_" + std::to_string(scan_num) + ".npy",
+                       &scan_intensities[0], {num_readings}, "w");
+        cnpy::npy_save("ranges_" + std::to_string(scan_num) + ".npy",
+                       &scan_ranges[0], {num_readings}, "w");
         scan_vec_ready = 0;
+        ++scan_num;
       }
     }
     close(sockfd);
   }
 
+protected:
+  void get_parameters(std::string config_path) {
+    config_ = config::fromYamlFile<LidarConfig>(config_path);
+    std::cout << config::toString(config_) << std::endl;
+  };
+
+  void scan_config() {
+    std::cout << "scan_config" << std::endl;
+    sensor_config(config_.sensorip, "/api/v1/sensor/scanfreq",
+                  config_.scanfreq);
+    sensor_config(config_.sensorip, "/api/v1/sensor/laser_enable",
+                  config_.laser_enable);
+    sensor_config(config_.sensorip, "/api/v1/sensor/scan_range/start",
+                  config_.scan_range_start);
+    sensor_config(config_.sensorip, "/api/v1/sensor/scan_range/stop",
+                  config_.scan_range_stop);
+    std::cout << "scan_config1" << std::endl;
+  };
+  int create_socket() {
+    std::cout << "create_socket" << std::endl;
+    // rclcpp::sleep_for(std::chrono::milliseconds(2000));
+    // get_telemetry_data(sensorip);
+    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sockfd == -1) {
+      std::cout << "Failed to create socket" << std::endl;
+      return -1;
+    }
+
+    memset(&ser_addr, 0, sizeof(ser_addr));
+    ser_addr.sin_family = AF_INET;
+    ser_addr.sin_addr.s_addr = inet_addr(config_.hostip.c_str());
+    ser_addr.sin_port = htons(atoi(config_.port.c_str()));
+
+    if (bind(sockfd, (struct sockaddr *)&ser_addr, sizeof(ser_addr)) < 0) {
+      std::cout << "Socket bind error!" << std::endl;
+      return -1;
+    }
+    return 0;
+  };
+
 private:
-  string hostip, sensorip, port, frame_id, output_topic, scanfreq, filter,
-      laser_enable, scan_range_start, scan_range_stop;
+  LidarConfig config_;
   int resolution = 25, scan_vec_ready = 0, angle_offset;
   bool inverted;
-  rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan_pub;
-  rclcpp::Time scan_begin, scan_end;
   struct sockaddr_in ser_addr, clent_addr;
   int i = 0, j = 12;
   int sockfd;
   std::vector<bm_response_scan_t> scan_vec;
+  int scan_num = 0;
 };
 
 int main(int argc, char **argv) {
-  rclcpp::init(argc, argv);
-  rclcpp::Rate rate(30);
-  auto node = make_shared<lakibeam1_scan>();
-  rclcpp::spin(node);
-  rclcpp::shutdown();
+  std::string config_path;
+  if (argc < 2) {
+    // std::cout << "Usage: ./lakibeam1_scan_node <path_to_config>" <<
+    // std::endl;
+    config_path = "config/default.yaml";
+  } else {
+    config_path = std::string(argv[1]);
+  }
+  auto node = std::make_shared<lakibeam1_scan>(config_path);
+  node->scan_publish();
 
   return 0;
 }
