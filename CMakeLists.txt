@@ -32,7 +32,7 @@ curl
 )
 
 add_executable(${PROJECT_NAME}_scan_node src/lakibeam1_scan.cpp src/remote.cpp)
-target_link_libraries(${PROJECT_NAME}_scan_node curl config_utilities yaml-cpp cnpy)
+target_link_libraries(${PROJECT_NAME}_scan_node curl config_utilities::config_utilities yaml-cpp cnpy)
 #target_include_directories(${PROJECT_NAME}_scan_node curl)
 
 #install(TARGETS ${PROJECT_NAME}_scan_node
