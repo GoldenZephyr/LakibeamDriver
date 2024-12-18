@@ -58,7 +58,7 @@ class lakibeam1_scan {
 public:
   lakibeam1_scan(std::string config_path) {
     get_parameters(config_path);
-    // scan_config();
+    scan_config();
     create_socket();
   }
 
@@ -71,8 +71,10 @@ public:
         while (1) {
           if (j == 12) {
             unsigned int len = sizeof(clent_addr);
-            recvfrom(sockfd, &MSOP_Data, sizeof(MSOP_Data), 0,
+            int nbytes = recvfrom(sockfd, &MSOP_Data, sizeof(MSOP_Data), 0,
                      (struct sockaddr *)&clent_addr, &len);
+            //std::cout << "Received from socket" << std::endl;
+            //std::cout << nbytes << " received" << std::endl;
             if (MSOP_Data.BlockID[0].Azimuth == 0) {
               // scan_end = scan_begin; // TODO
               // scan_begin = rclcpp::Clock().now(); // TODO
@@ -103,6 +105,8 @@ public:
                 }
                 response_ptr.dist = MSOP_Data.BlockID[j].Result[i].Dist_1;
                 response_ptr.rssi = MSOP_Data.BlockID[j].Result[i].RSSI_1;
+                //std::cout << "dist: " << std::to_string(response_ptr.dist) << std::endl;
+                //std::cout << "rssi: " << std::to_string(response_ptr.rssi) << std::endl;
                 scan_vec.push_back(response_ptr);
               }
             }
@@ -138,7 +142,14 @@ public:
         std::vector<double> scan_intensities;
         scan_ranges.resize(num_readings);
         scan_intensities.resize(num_readings);
-        for (int idx = 0; i < num_readings; i++) {
+
+        std::cout << "scan vec dists:" << std::endl;
+        for (auto& sv : scan_vec) {
+            std::cout << sv.dist << ", ";
+        }
+        std::cout << std::endl;
+
+        for (int idx = 0; idx < num_readings; idx++) {
           if (!inverted) {
             scan_ranges[idx] = scan_vec[idx].dist / 1000.0;
             scan_intensities[idx] = scan_vec[idx].rssi;
@@ -154,15 +165,25 @@ public:
         out << YAML::Value << time_ms.count();
         out << YAML::EndMap;
 
-        std::ofstream fout("metadata_" + std::to_string(scan_num) + ".yaml");
+        std::string prefix = "output/";
+        std::ofstream fout(prefix + "metadata_" + std::to_string(scan_num) + ".yaml");
         fout << out.c_str();
 
-        cnpy::npy_save("intensities_" + std::to_string(scan_num) + ".npy",
+        std::cout << "Saving " << num_readings << " readings";
+        cnpy::npy_save(prefix + "intensities_" + std::to_string(scan_num) + ".npy",
                        &scan_intensities[0], {num_readings}, "w");
-        cnpy::npy_save("ranges_" + std::to_string(scan_num) + ".npy",
+
+
+        std::cout << "scan ranges: " << std::endl;
+        for (auto& r : scan_ranges) {
+            std::cout << r << ", ";
+        }
+
+        cnpy::npy_save(prefix + "ranges_" + std::to_string(scan_num) + ".npy",
                        &scan_ranges[0], {num_readings}, "w");
-        scan_vec_ready = 0;
         ++scan_num;
+        scan_vec_ready = 0;
+        scan_vec.clear();
       }
     }
     close(sockfd);

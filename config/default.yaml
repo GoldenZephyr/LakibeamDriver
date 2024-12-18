@@ -1,6 +1,7 @@
 frame_id: laser
 inverted: false
-hostip: 0.0.0.0
+#hostip: 0.0.0.0
+hostip: 192.168.30.2
 #sensorip: 192.168.198.2
 sensorip: 192.168.30.10
 port: 2368
