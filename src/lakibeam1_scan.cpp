@@ -154,12 +154,13 @@ public:
         out << YAML::Value << time_ms.count();
         out << YAML::EndMap;
 
-        std::ofstream fout("metadata_" + std::to_string(scan_num) + ".yaml");
+        std::string prefix = "output/";
+        std::ofstream fout(prefix + "metadata_" + std::to_string(scan_num) + ".yaml");
         fout << out.c_str();
 
-        cnpy::npy_save("intensities_" + std::to_string(scan_num) + ".npy",
+        cnpy::npy_save(prefix + "intensities_" + std::to_string(scan_num) + ".npy",
                        &scan_intensities[0], {num_readings}, "w");
-        cnpy::npy_save("ranges_" + std::to_string(scan_num) + ".npy",
+        cnpy::npy_save(prefix + "ranges_" + std::to_string(scan_num) + ".npy",
                        &scan_ranges[0], {num_readings}, "w");
         scan_vec_ready = 0;
         ++scan_num;
