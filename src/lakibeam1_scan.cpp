@@ -58,7 +58,7 @@ class lakibeam1_scan {
 public:
   lakibeam1_scan(std::string config_path) {
     get_parameters(config_path);
-    // scan_config();
+    scan_config();
     create_socket();
   }
 
@@ -138,7 +138,7 @@ public:
         std::vector<double> scan_intensities;
         scan_ranges.resize(num_readings);
         scan_intensities.resize(num_readings);
-        for (int idx = 0; i < num_readings; i++) {
+        for (int idx = 0; idx < num_readings; idx++) {
           if (!inverted) {
             scan_ranges[idx] = scan_vec[idx].dist / 1000.0;
             scan_intensities[idx] = scan_vec[idx].rssi;
@@ -162,8 +162,9 @@ public:
                        &scan_intensities[0], {num_readings}, "w");
         cnpy::npy_save(prefix + "ranges_" + std::to_string(scan_num) + ".npy",
                        &scan_ranges[0], {num_readings}, "w");
-        scan_vec_ready = 0;
         ++scan_num;
+        scan_vec_ready = 0;
+        scan_vec.clear();
       }
     }
     close(sockfd);
